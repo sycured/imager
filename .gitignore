@@ -4,5 +4,4 @@
 **/target
 **/*.rs.bk
 **/.commands.out.sh
-Cargo.lock
 release/
