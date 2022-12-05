@@ -45,6 +45,11 @@ features = ["buildtype-docs-only"]
 [target.'cfg(not(target_os = "windows"))'.dependencies]
 jemallocator = "0.5.0"
 
+[profile.release]
+codegen-units = 1
+lto = true
+strip = true
+
 [profile.dev]
 opt-level = 3
 lto = true
