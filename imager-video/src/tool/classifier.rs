@@ -10,7 +10,7 @@ use image::{
     GenericImage,
     GenericImageView,
     DynamicImage,
-    FilterType,
+    imageops::FilterType,
     Pixel,
     ColorType,
     ImageBuffer,
@@ -19,7 +19,7 @@ use image::{
     RgbImage,
     Luma,
     Rgb,
-    ConvertBuffer,
+    buffer::ConvertBuffer,
 };
 use imageproc::corners::Fast;
 use imageproc::definitions::HasBlack;
@@ -114,7 +114,7 @@ pub fn random_color_map(keys: HashSet<u32>) -> HashMap<u32, image::Rgb<u8>> {
 pub fn is_white_dominant(media: &DynamicImage) -> bool {
     // LOAD
     let media = media.resize_exact(700, 700, FilterType::Gaussian);
-    let mut gray_media = media.to_luma();
+    let mut gray_media = media.to_luma8();
     let mut media = image::imageops::colorops::contrast(&gray_media, 5.0);
     // SETUP
     let mut components = connected_components(&media, Connectivity::Four, Luma::black());
@@ -223,7 +223,7 @@ fn calcuate_class(meta: &Meta) -> Class {
 }
 
 pub fn grayscale_segmentation(media: &DynamicImage) -> GrayImage {
-    let mut grayscale_media = media.to_luma();
+    let mut grayscale_media = media.to_luma8();
     unimplemented!()
 }
 
@@ -233,7 +233,7 @@ pub fn get_report(media: &DynamicImage) -> Report {
     // PRE-PROCESS IMAGE
     let media = media.resize_exact(700, 700, FilterType::Gaussian);
     // DOMINANT COLORS
-    let mut grayscale_media = media.to_luma();
+    let mut grayscale_media = media.to_luma8();
     for (_, _, px) in grayscale_media.enumerate_pixels_mut() {
         // px.0[0] = 200;
     }
@@ -248,7 +248,7 @@ pub fn get_report(media: &DynamicImage) -> Report {
             }
         });
     // EDGES
-    let edges_media: GrayImage = imageproc::edges::canny(&media.to_luma(), 10.0, 20.0);
+    let edges_media: GrayImage = imageproc::edges::canny(&media.to_luma8(), 10.0, 20.0);
     let edges_sum: usize = edges_media
         .pixels()
         .fold(0, |acc, px| {

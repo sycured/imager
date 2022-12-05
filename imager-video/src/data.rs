@@ -64,7 +64,7 @@ unsafe fn convert_to_yuv_using_webp(source: &DynamicImage) -> Yuv420P {
     // FILL PIXEL BUFFERS
     unsafe {
         let mut pixel_data = source
-            .to_rgb()
+            .to_rgb8()
             .pixels()
             .flat_map(|px: &::image::Rgb<u8>| px.0.to_vec())
             .collect::<Vec<_>>();
