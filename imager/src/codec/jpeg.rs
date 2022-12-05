@@ -11,7 +11,7 @@ use image::{
     GenericImage,
     DynamicImage,
     GenericImageView,
-    FilterType,
+    imageops::FilterType,
     ColorType,
     Pixel,
 };
@@ -45,7 +45,7 @@ pub unsafe fn encode(source: &DynamicImage, quality: u8) -> Vec<u8> {
     // INPUT
     ///////////////////////////////////////////////////////////////////////////
     let rgb_source = source
-        .to_rgb()
+        .to_rgb8()
         .pixels()
         .flat_map(|x| x.0.to_vec())
         .collect::<Vec<_>>();

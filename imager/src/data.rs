@@ -38,9 +38,9 @@ impl OutputFormat {
         let buffer = std::fs::read(path).ok()?;
         let format = ::image::guess_format(&buffer).ok()?;
         match format {
-            ImageFormat::JPEG => Some(OutputFormat::Jpeg),
-            ImageFormat::PNG => Some(OutputFormat::Png),
-            ImageFormat::WEBP => Some(OutputFormat::Webp),
+            ImageFormat::Jpeg => Some(OutputFormat::Jpeg),
+            ImageFormat::Png => Some(OutputFormat::Png),
+            ImageFormat::WebP => Some(OutputFormat::Webp),
             _ => None
         }
     }
@@ -280,7 +280,7 @@ unsafe fn convert_to_yuv_using_webp(source: &DynamicImage) -> Yuv420P {
     // FILL PIXEL BUFFERS
     unsafe {
         let mut pixel_data = source
-            .to_rgb()
+            .to_rgb8()
             .pixels()
             .flat_map(|px: &::image::Rgb<u8>| px.0.to_vec())
             .collect::<Vec<_>>();
@@ -490,7 +490,7 @@ impl VideoBuffer {
     pub fn from_png(source: &[u8]) -> Result<Self, ()> {
         let source = ::image::load_from_memory_with_format(
             source,
-            ::image::ImageFormat::PNG,
+            ::image::ImageFormat::Png,
         );
         let source = source.expect("load png source");
         VideoBuffer::from_image(&source)
@@ -498,7 +498,7 @@ impl VideoBuffer {
     pub fn from_jpeg(source: &[u8]) -> Result<Self, ()> {
         let source = ::image::load_from_memory_with_format(
             source,
-            ::image::ImageFormat::JPEG,
+            ::image::ImageFormat::Jpeg,
         );
         let source = source.expect("load jpeg source");
         VideoBuffer::from_image(&source)

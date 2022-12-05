@@ -38,7 +38,7 @@ pub fn init_picture(source: &DynamicImage) -> (WebPPicture, *mut WebPMemoryWrite
     // FILL PIXEL BUFFERS
     unsafe {
         let mut pixel_data = source
-            .to_rgba()
+            .to_rgba8()
             .pixels()
             .flat_map(|px| px.0.to_vec())
             .collect::<Vec<_>>();

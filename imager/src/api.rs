@@ -33,13 +33,13 @@ impl OptJob {
     pub fn new(source: &[u8]) -> Result<Self, ()> {
         let source_format = ::image::guess_format(source).map_err(drop)?;
         let output_format = match source_format {
-            ImageFormat::JPEG => OutputFormat::Jpeg,
-            ImageFormat::PNG => OutputFormat::Png,
-            ImageFormat::WEBP => OutputFormat::Webp,
+            ImageFormat::Jpeg => OutputFormat::Jpeg,
+            ImageFormat::Png => OutputFormat::Png,
+            ImageFormat::WebP => OutputFormat::Webp,
             _ => OutputFormat::Jpeg
         };
         match source_format {
-            ImageFormat::WEBP => {
+            ImageFormat::WebP => {
                 let source = webp::decode::decode(source);
                 let source = crate::data::ensure_even_reslution(&source);
                 Ok(OptJob {
@@ -74,7 +74,7 @@ impl OptJob {
     pub fn run(self, extreme_mode: bool) -> Result<(Vec<u8>, OutMeda), ()> {
         let input = match self.max_size {
             Some(res) if (res.width, res.height) < self.source.dimensions() => {
-                self.source.resize(res.width, res.height, ::image::FilterType::Lanczos3)
+                self.source.resize(res.width, res.height, ::image::imageops::FilterType::Lanczos3)
             },
             _ => self.source.clone(),
         };
