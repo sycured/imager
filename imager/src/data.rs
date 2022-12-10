@@ -1,26 +1,20 @@
 // This Source Code Form is subject to the terms of the Mozilla Public
 // License, v. 2.0. If a copy of the MPL was not distributed with this
 // file, You can obtain one at https://mozilla.org/MPL/2.0/.
-use std::str::FromStr;
-use std::rc::Rc;
-use std::sync::Arc;
+use image::{DynamicImage, GenericImage, GenericImageView, ImageBuffer, ImageFormat};
+use itertools::Itertools;
+use libc::{c_float, c_void, size_t};
+use libwebp_sys::{WebPConfig, WebPMemoryWriter, WebPPicture, WEBP_MAX_DIMENSION};
+use rayon::prelude::*;
+use serde::{Deserialize, Serialize};
 use std::collections::LinkedList;
 use std::convert::{AsRef, TryFrom};
-use std::path::{PathBuf, Path};
 use std::ffi::{CStr, CString};
 use std::os::raw::{c_char, c_int};
-use libc::{size_t, c_float, c_void};
-use serde::{Serialize, Deserialize};
-use itertools::Itertools;
-use image::{DynamicImage, GenericImage, GenericImageView, ImageBuffer, ImageFormat};
-use rayon::prelude::*;
-use webp_dev::sys::webp::{
-    self as webp_sys,
-    WebPConfig,
-    WebPPicture,
-    WebPMemoryWriter,
-};
-
+use std::path::{Path, PathBuf};
+use std::rc::Rc;
+use std::str::FromStr;
+use std::sync::Arc;
 
 ///////////////////////////////////////////////////////////////////////////////
 // OUTPUT-FORMAT
@@ -41,14 +35,11 @@ impl OutputFormat {
             ImageFormat::Jpeg => Some(OutputFormat::Jpeg),
             ImageFormat::Png => Some(OutputFormat::Png),
             ImageFormat::WebP => Some(OutputFormat::Webp),
-            _ => None
+            _ => None,
         }
     }
     pub fn infer_from_path<P: AsRef<Path>>(path: P) -> Option<Self> {
-        let ext = path
-            .as_ref()
-            .extension()?
-            .to_str()?;
+        let ext = path.as_ref().extension()?.to_str()?;
         OutputFormat::from_str(ext).ok()
     }
 }
@@ -61,9 +52,7 @@ impl FromStr for OutputFormat {
             "jpg" => Ok(OutputFormat::Jpeg),
             "png" => Ok(OutputFormat::Png),
             "webp" => Ok(OutputFormat::Webp),
-            _ => {
-                Err(format!("Unknown or unsupported output format {}", s))
-            }
+            _ => Err(format!("Unknown or unsupported output format {}", s)),
         }
     }
 }
@@ -89,13 +78,11 @@ impl FromStr for OutputFormats {
         let mut invalids = Vec::new();
         let results = s
             .split_whitespace()
-            .filter_map(|x| {
-                match OutputFormat::from_str(x) {
-                    Ok(x) => Some(x),
-                    Err(e) => {
-                        invalids.push(e);
-                        None
-                    }
+            .filter_map(|x| match OutputFormat::from_str(x) {
+                Ok(x) => Some(x),
+                Err(e) => {
+                    invalids.push(e);
+                    None
                 }
             })
             .collect::<Vec<_>>();
@@ -106,7 +93,6 @@ impl FromStr for OutputFormats {
         }
     }
 }
-
 
 ///////////////////////////////////////////////////////////////////////////////
 // RESOLUTION
@@ -120,7 +106,7 @@ pub struct Resolution {
 
 impl Resolution {
     pub fn new(width: u32, height: u32) -> Self {
-        Resolution{width, height}
+        Resolution { width, height }
     }
 }
 
@@ -130,7 +116,6 @@ impl std::fmt::Display for Resolution {
     }
 }
 
-
 impl FromStr for Resolution {
     type Err = String;
     fn from_str(input: &str) -> Result<Self, Self::Err> {
@@ -139,11 +124,9 @@ impl FromStr for Resolution {
         let height = height.trim_start_matches("x");
         let width = u32::from_str(width).map_err(|_| "invalid")?;
         let height = u32::from_str(height).map_err(|_| "invalid")?;
-        Ok(Resolution {width, height})
+        Ok(Resolution { width, height })
     }
 }
-
-
 
 ///////////////////////////////////////////////////////////////////////////////
 // OUTPUT-SIZE
@@ -185,16 +168,23 @@ impl Default for OutputSize {
     }
 }
 
-
 impl Serialize for OutputSize {
-    fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error> where S: serde::Serializer {
+    fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
+    where
+        S: serde::Serializer,
+    {
         serializer.serialize_str(&self.to_string())
     }
 }
 
 impl<'de> Deserialize<'de> for OutputSize {
-    fn deserialize<D>(deserializer: D) -> Result<Self, D::Error> where D: serde::Deserializer<'de> {
-        String::deserialize(deserializer)?.parse().map_err(serde::de::Error::custom)
+    fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
+    where
+        D: serde::Deserializer<'de>,
+    {
+        String::deserialize(deserializer)?
+            .parse()
+            .map_err(serde::de::Error::custom)
     }
 }
 
@@ -222,9 +212,7 @@ pub fn ensure_even_reslution(source: &DynamicImage) -> DynamicImage {
                 height
             }
         };
-        let new_image = source
-            .clone()
-            .crop(0, 0, new_width, new_height);
+        let new_image = source.clone().crop(0, 0, new_width, new_height);
         new_image
     } else {
         source.clone()
@@ -253,9 +241,7 @@ pub fn open_dir_sorted_paths<P: AsRef<Path>>(path: P) -> Vec<PathBuf> {
             let index = file_name.parse::<usize>().ok()?;
             Some((index, x))
         })
-        .sorted_by(|(i, _), (j, _)| {
-            i.cmp(j)
-        })
+        .sorted_by(|(i, _), (j, _)| i.cmp(j))
         .map(|(_, x)| x)
         .collect::<Vec<_>>()
 }
@@ -265,12 +251,12 @@ unsafe fn convert_to_yuv_using_webp(source: &DynamicImage) -> Yuv420P {
     let source = ensure_even_reslution(source);
     let (width, height) = source.dimensions();
     // WEBP INVARIANTS
-    assert!(width < webp_sys::WEBP_MAX_DIMENSION);
-    assert!(height < webp_sys::WEBP_MAX_DIMENSION);
+    assert!(width < WEBP_MAX_DIMENSION);
+    assert!(height < WEBP_MAX_DIMENSION);
     // INIT WEBP
-    let mut picture: WebPPicture = unsafe {std::mem::zeroed()};
+    let mut picture: WebPPicture = unsafe { std::mem::zeroed() };
     unsafe {
-        assert!(webp_sys::webp_picture_init(&mut picture) != 0);
+        assert_ne!(libwebp_sys::WebPPictureInit(&mut picture), false);
     };
     let argb_stride = width;
     picture.use_argb = 1;
@@ -285,31 +271,31 @@ unsafe fn convert_to_yuv_using_webp(source: &DynamicImage) -> Yuv420P {
             .flat_map(|px: &::image::Rgb<u8>| px.0.to_vec())
             .collect::<Vec<_>>();
         let full_stride = argb_stride * 3;
-        let status = webp_sys::webp_picture_import_rgb(
+        let status = libwebp_sys::WebPPictureImportRGB(
             &mut picture,
             pixel_data.as_mut_ptr(),
             full_stride as i32,
         );
         // CHECKS
         let expected_size = argb_stride * height * 3;
-        assert!(pixel_data.len() as u32 == expected_size);
-        assert!(status != 0);
+        assert_eq!(pixel_data.len() as u32, expected_size);
+        assert_ne!(status, 0);
         // CLEANUP
         std::mem::drop(pixel_data);
     };
     // CHECKS
-    assert!(picture.use_argb == 1);
+    assert_eq!(picture.use_argb, 1);
     assert!(picture.y.is_null());
     assert!(!picture.argb.is_null());
     // CONVERT
     unsafe {
-        assert!(webp_sys::webp_picture_sharp_argb_to_yuva(&mut picture) != 0);
-        assert!(picture.use_argb == 0);
+        assert_ne!(libwebp_sys::WebPPictureSharpARGBToYUVA(&mut picture), 0);
+        assert_eq!(picture.use_argb, 0);
         assert!(!picture.y.is_null());
     };
     let data = unsafe {
-        assert!(picture.y_stride as u32 == width);
-        assert!(picture.uv_stride as u32 == width / 2);
+        assert_eq!(picture.y_stride as u32, width);
+        assert_eq!(picture.uv_stride as u32, width / 2);
         let y_size = width * height;
         let uv_size = width * height / 4;
         let y = std::slice::from_raw_parts_mut(picture.y, y_size as usize).to_vec();
@@ -319,29 +305,33 @@ unsafe fn convert_to_yuv_using_webp(source: &DynamicImage) -> Yuv420P {
     };
     // CLEANUP
     unsafe {
-        webp_sys::webp_picture_free(&mut picture);
+        libwebp_sys::WebPPictureFree(&mut picture);
     };
     std::mem::drop(picture);
     // DONE
-    let result = Yuv420P {data, width, height};
+    let result = Yuv420P {
+        data,
+        width,
+        height,
+    };
     assert!(result.expected_yuv420p_size());
     result
 }
 
 unsafe fn convert_to_rgba_using_webp(source: &Yuv420P) -> DynamicImage {
     let (width, height) = source.dimensions();
-    assert!(width < webp_sys::WEBP_MAX_DIMENSION);
-    assert!(height < webp_sys::WEBP_MAX_DIMENSION);
-    let mut picture: WebPPicture = unsafe {std::mem::zeroed()};
-    assert!(webp_sys::webp_picture_init(&mut picture) != 0);
+    assert!(width < WEBP_MAX_DIMENSION);
+    assert!(height < WEBP_MAX_DIMENSION);
+    let mut picture: WebPPicture = unsafe { std::mem::zeroed() };
+    assert_ne!(libwebp_sys::WebPPictureInit(&mut picture), false);
     let argb_stride = width;
     picture.use_argb = 0;
     picture.width = width as i32;
     picture.height = height as i32;
     picture.argb_stride = argb_stride as i32;
-    picture.colorspace = webp_sys::WEBP_YUV420;
+    picture.colorspace = libwebp_sys::WebPEncCSP::WEBP_YUV420;
     // ALLOCATE
-    assert!(webp_sys::webp_picture_alloc(&mut picture) != 0);
+    assert_ne!(libwebp_sys::WebPPictureAlloc(&mut picture), 0);
     // FILL SOURCE PIXEL BUFFERS
     {
         // CHECKS
@@ -360,16 +350,14 @@ unsafe fn convert_to_rgba_using_webp(source: &Yuv420P) -> DynamicImage {
     };
     // CONVERT
     assert!(picture.argb.is_null());
-    assert!(webp_sys::webp_picture_has_transparency(&picture) == 0);
-    assert!(webp_sys::webp_picture_yuva_to_argb(
-        &mut picture,
-    ) != 0);
+    assert_eq!(libwebp_sys::WebPPictureHasTransparency(&picture), 0);
+    assert_ne!(libwebp_sys::WebPPictureYUVAToARGB(&mut picture,), 0);
     // CHECKS
-    assert!(picture.use_argb == 1);
+    assert_eq!(picture.use_argb, 1);
     assert!(!picture.argb.is_null());
-    assert!(webp_sys::webp_picture_has_transparency(&picture) == 0);
+    assert_eq!(libwebp_sys::WebPPictureHasTransparency(&picture), 0);
     // GET RESULT DATA
-    assert!(picture.argb_stride as u32 == width);
+    assert_eq!(picture.argb_stride as u32, width);
     let rgba_output = ::image::RgbaImage::from_fn(width, height, |x_pos, y_pos| {
         let ptr_ix = (y_pos * width) + x_pos;
         let px = *picture.argb.add(ptr_ix as usize);
@@ -379,13 +367,12 @@ unsafe fn convert_to_rgba_using_webp(source: &Yuv420P) -> DynamicImage {
     let rgba_output = DynamicImage::ImageRgba8(rgba_output);
     // CLEANUP
     unsafe {
-        webp_sys::webp_picture_free(&mut picture);
+        libwebp_sys::WebPPictureFree(&mut picture);
     };
     std::mem::drop(picture);
     // DONE
     rgba_output
 }
-
 
 ///////////////////////////////////////////////////////////////////////////////
 // PICTURE BUFFERS
@@ -401,10 +388,10 @@ pub struct Yuv420P {
 impl Yuv420P {
     pub fn open_image<P: AsRef<Path>>(path: P) -> Result<Self, ()> {
         let source = ::image::open(path).expect("Yuv420P::open_image - load image");
-        Yuv420P::from_image(&source)
+        Self::from_image(&source)
     }
     pub fn from_image(source: &DynamicImage) -> Result<Self, ()> {
-        Ok(unsafe{ convert_to_yuv_using_webp(source) })
+        Ok(unsafe { convert_to_yuv_using_webp(source) })
     }
     pub fn open_yuv<P: AsRef<Path>>(path: P, width: u32, height: u32) -> Result<Self, ()> {
         let source = std::fs::read(path).expect("read raw yuv file");
@@ -416,12 +403,15 @@ impl Yuv420P {
         assert!(result.expected_yuv420p_size());
         Ok(result)
     }
+    #[must_use]
     pub fn luma_size(&self) -> u32 {
         self.width * self.height
     }
+    #[must_use]
     pub fn chroma_size(&self) -> u32 {
         self.width * self.height / 4
     }
+    #[must_use]
     pub fn expected_yuv420p_size(&self) -> bool {
         let expected_size = {
             let l = self.luma_size();
@@ -433,42 +423,49 @@ impl Yuv420P {
     pub fn save(&self, path: &str) {
         println!(
             "ffplay -video_size {}x{} -pixel_format yuv420p {}",
-            self.width,
-            self.height,
-            path,
+            self.width, self.height, path,
         );
         std::fs::write(path, &self.data);
     }
+    #[must_use]
     pub fn to_rgba_image(&self) -> DynamicImage {
-        unsafe {convert_to_rgba_using_webp(self)}
+        unsafe { convert_to_rgba_using_webp(self) }
     }
+    #[must_use]
     pub fn y(&self) -> &[u8] {
         assert!(self.expected_yuv420p_size());
         let end = self.luma_size();
-        self.data.get(0 .. end as usize).expect("bad (Y) plane size")
+        self.data.get(0..end as usize).expect("bad (Y) plane size")
     }
+    #[must_use]
     pub fn u(&self) -> &[u8] {
         assert!(self.expected_yuv420p_size());
-        let plane = self.data
+        let plane = self
+            .data
             .as_slice()
-            .split_at(self.luma_size() as usize).1
+            .split_at(self.luma_size() as usize)
+            .1
             .chunks(self.chroma_size() as usize)
-            .nth(0)
+            .next()
             .expect("bad (U) plane chunk size");
-        assert!(plane.len() == self.chroma_size() as usize);
+        assert_eq!(plane.len(), self.chroma_size() as usize);
         plane
     }
+    #[must_use]
     pub fn v(&self) -> &[u8] {
         assert!(self.expected_yuv420p_size());
-        let plane = self.data
+        let plane = self
+            .data
             .as_slice()
-            .split_at(self.luma_size() as usize).1
+            .split_at(self.luma_size() as usize)
+            .1
             .chunks(self.chroma_size() as usize)
             .nth(1)
             .expect("bad (V) plane chunk size");
-        assert!(plane.len() == self.chroma_size() as usize);
+        assert_eq!(plane.len(), self.chroma_size() as usize);
         plane
     }
+    #[must_use]
     pub fn dimensions(&self) -> (u32, u32) {
         (self.width, self.height)
     }
@@ -488,18 +485,12 @@ pub struct VideoBuffer {
 
 impl VideoBuffer {
     pub fn from_png(source: &[u8]) -> Result<Self, ()> {
-        let source = ::image::load_from_memory_with_format(
-            source,
-            ::image::ImageFormat::Png,
-        );
+        let source = ::image::load_from_memory_with_format(source, ::image::ImageFormat::Png);
         let source = source.expect("load png source");
         VideoBuffer::from_image(&source)
     }
     pub fn from_jpeg(source: &[u8]) -> Result<Self, ()> {
-        let source = ::image::load_from_memory_with_format(
-            source,
-            ::image::ImageFormat::Jpeg,
-        );
+        let source = ::image::load_from_memory_with_format(source, ::image::ImageFormat::Jpeg);
         let source = source.expect("load jpeg source");
         VideoBuffer::from_image(&source)
     }

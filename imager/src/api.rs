@@ -1,13 +1,15 @@
-use std::convert::AsRef;
-use std::path::{Path, PathBuf};
-use image::{DynamicImage, GenericImage, GenericImageView, ImageFormat};
 use either::{Either, Either::*};
-use serde::{Serialize, Deserialize};
+use image::{DynamicImage, GenericImage, GenericImageView, ImageFormat};
+use serde::{Deserialize, Serialize};
+use std::{
+    convert::AsRef,
+    path::{Path, PathBuf},
+};
 
-use crate::data::{Resolution, OutputFormat};
-use crate::codec::jpeg;
-use crate::codec::png;
-use crate::codec::webp;
+use crate::{
+    codec::{jpeg, png, webp},
+    data::{OutputFormat, Resolution},
+};
 
 pub struct OptJob {
     source: DynamicImage,
@@ -33,38 +35,32 @@ impl OptJob {
     pub fn new(source: &[u8]) -> Result<Self, ()> {
         let source_format = ::image::guess_format(source).map_err(drop)?;
         let output_format = match source_format {
-            ImageFormat::Jpeg => OutputFormat::Jpeg,
             ImageFormat::Png => OutputFormat::Png,
             ImageFormat::WebP => OutputFormat::Webp,
-            _ => OutputFormat::Jpeg
+            _ => OutputFormat::Jpeg,
         };
-        match source_format {
-            ImageFormat::WebP => {
-                let source = webp::decode::decode(source);
-                let source = crate::data::ensure_even_reslution(&source);
-                Ok(OptJob {
-                    output_format,
-                    source,
-                    source_format,
-                    max_size: None,
-                })
-            }
-            _ => {
-                let source = ::image::load_from_memory_with_format(
-                        source,
-                        source_format,
-                    )
-                    .map_err(drop)?;
-                let source = crate::data::ensure_even_reslution(&source);
-                Ok(OptJob {
-                    output_format,
-                    source,
-                    source_format,
-                    max_size: None,
-                })
-            }
+        if source_format == ImageFormat::WebP {
+            let source = webp::decode::decode(source);
+            let source = crate::data::ensure_even_reslution(&source);
+            Ok(OptJob {
+                output_format,
+                source,
+                source_format,
+                max_size: None,
+            })
+        } else {
+            let source =
+                ::image::load_from_memory_with_format(source, source_format).map_err(drop)?;
+            let source = crate::data::ensure_even_reslution(&source);
+            Ok(OptJob {
+                output_format,
+                source,
+                source_format,
+                max_size: None,
+            })
         }
     }
+
     pub fn output_format(&mut self, output_format: OutputFormat) {
         self.output_format = output_format;
     }
@@ -73,9 +69,11 @@ impl OptJob {
     }
     pub fn run(self, extreme_mode: bool) -> Result<(Vec<u8>, OutMeda), ()> {
         let input = match self.max_size {
-            Some(res) if (res.width, res.height) < self.source.dimensions() => {
-                self.source.resize(res.width, res.height, ::image::imageops::FilterType::Lanczos3)
-            },
+            Some(res) if (res.width, res.height) < self.source.dimensions() => self.source.resize(
+                res.width,
+                res.height,
+                ::image::imageops::FilterType::Lanczos3,
+            ),
             _ => self.source.clone(),
         };
         match self.output_format {
@@ -91,8 +89,7 @@ impl OptJob {
                 Ok((out, meta))
             }
             OutputFormat::Jpeg => {
-                let (out, meta) = jpeg::OptContext::from_image(input.clone())
-                    .run_search(extreme_mode);
+                let (out, meta) = jpeg::OptContext::from_image(input).run_search(extreme_mode);
                 let meta = OutMeda {
                     input_class: meta.class,
                     input_path: None,
