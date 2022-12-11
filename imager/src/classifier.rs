@@ -45,9 +45,9 @@ impl std::fmt::Display for Class {
             Class::L0 => write!(f, "l0"),
             Class::L1 => write!(f, "l1"),
             Class::L2 => write!(f, "l2"),
-            Class::M1 => write!(f, "m1"),
-            Class::H1 => write!(f, "h1"),
-            Class::H2 => write!(f, "h2"),
+            Self::M1 => write!(f, "m1"),
+            Self::H1 => write!(f, "h1"),
+            Self::H2 => write!(f, "h2"),
         }
     }
 }
@@ -55,10 +55,7 @@ impl std::fmt::Display for Class {
 impl std::str::FromStr for Class {
     type Err = String;
     fn from_str(input: &str) -> Result<Self, Self::Err> {
-        match Class::from_str(input) {
-            Some(x) => Ok(x),
-            None => Err(String::from("parser failed (invalid)")),
-        }
+        Self::from_str(input).map_or_else(|| Err(String::from("parser failed (invalid)")), |x| Ok(x))
     }
 }
 
@@ -66,6 +63,7 @@ impl std::str::FromStr for Class {
 // UTILS
 ///////////////////////////////////////////////////////////////////////////////
 
+#[must_use]
 pub fn random_color_map(keys: HashSet<u32>) -> HashMap<u32, image::Rgb<u8>> {
     use colourado::{Color, ColorPalette, PaletteType};
     let palette = ColorPalette::new(keys.len() as u32, PaletteType::Random, false);
@@ -92,6 +90,7 @@ pub fn random_color_map(keys: HashSet<u32>) -> HashMap<u32, image::Rgb<u8>> {
 // WHITE COUNT
 ///////////////////////////////////////////////////////////////////////////////
 
+#[must_use]
 pub fn is_white_dominant(media: &DynamicImage) -> bool {
     // LOAD
     let media = media.resize_exact(700, 700, FilterType::Gaussian);
@@ -121,7 +120,7 @@ pub fn is_white_dominant(media: &DynamicImage) -> bool {
     // FILTER
     for (x, y, px) in components.enumerate_pixels_mut() {
         let key = px.0[0];
-        if let Some(val) = regions_reg.get(&key).map(|x| x.clone()) {
+        if let Some(val) = regions_reg.get(&key).copied() {
             if val < 15_000 {
                 px.0[0] = 0;
             }
@@ -137,7 +136,7 @@ pub fn is_white_dominant(media: &DynamicImage) -> bool {
     }
     // DEBUG IMAGE
     if false {
-        let debug_colors = random_color_map(components.pixels().map(|p| p[0]).map(|x| x).collect());
+        let debug_colors = random_color_map(components.pixels().map(|p| p[0]).collect());
         let debug_media = ImageBuffer::from_fn(media.width(), media.height(), |x, y| {
             let px_key = components.get_pixel(x, y).channels()[0];
             let color = debug_colors.get(&px_key).expect("missing color entry");
@@ -193,6 +192,7 @@ fn calcuate_class(meta: &Meta) -> Class {
     output
 }
 
+#[must_use]
 pub fn grayscale_segmentation(media: &DynamicImage) -> GrayImage {
     let mut grayscale_media = media.to_luma8();
     unimplemented!()
@@ -200,7 +200,7 @@ pub fn grayscale_segmentation(media: &DynamicImage) -> GrayImage {
 
 pub fn report(media: &DynamicImage) -> Report {
     // MISC
-    let white_dominant = is_white_dominant(&media);
+    let white_dominant = is_white_dominant(media);
     // PRE-PROCESS IMAGE
     let media = media.resize_exact(700, 700, FilterType::Gaussian);
     // DOMINANT COLORS

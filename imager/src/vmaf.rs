@@ -36,8 +36,8 @@ unsafe fn fill_vmaf_buffer(mut output: *mut c_float, output_stride: c_int, sourc
     for y in 0..height {
         for x in 0..width {
             let s1_px: u8 = *(source_ptr.offset(x as isize));
-            let s1_px: c_float = s1_px as c_float;
-            *(output.offset(x as isize)) = s1_px
+            let s1_px: c_float = f32::from(s1_px);
+            *(output.offset(x as isize)) = s1_px;
         }
         source_ptr = source_ptr.add(src_linesize / std::mem::size_of_val(&*source_ptr));
         output = output.add(dest_stride / std::mem::size_of_val(&*output));
@@ -63,8 +63,8 @@ unsafe extern "C" fn read_frame(
     // NEXT FRAME OR DONE
     match (vmaf_ctx.stream1.next(), vmaf_ctx.stream2.next()) {
         (Some(frame1), Some(frame2)) => {
-            fill_vmaf_buffer(source1_out, out_stride, &frame1);
-            fill_vmaf_buffer(source2_out, out_stride, &frame2);
+            fill_vmaf_buffer(source1_out, out_stride, frame1);
+            fill_vmaf_buffer(source2_out, out_stride, frame2);
         }
         (None, None) => {
             vmaf_ctx.frames_set = true;
@@ -155,7 +155,7 @@ pub unsafe fn vmaf_controller<'a>(
     vmaf_score
 }
 
-pub fn get_report(stream1: &VideoBuffer, stream2: &VideoBuffer) -> f64 {
+#[must_use] pub fn get_report(stream1: &VideoBuffer, stream2: &VideoBuffer) -> f64 {
     // SETUP
     let mut stream1 = stream1.as_fresh_cursor();
     let mut stream2 = stream2.as_fresh_cursor();

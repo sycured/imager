@@ -31,7 +31,7 @@ const COLOR_SPACE_COMPONENTS: libc::c_int = 3 as libc::c_int;
 // MOZJPEG ENCODER
 ///////////////////////////////////////////////////////////////////////////////
 
-pub unsafe fn encode(source: &DynamicImage, quality: u8) -> Vec<u8> {
+#[must_use] pub unsafe fn encode(source: &DynamicImage, quality: u8) -> Vec<u8> {
     ///////////////////////////////////////////////////////////////////////////
     // INPUT
     ///////////////////////////////////////////////////////////////////////////
@@ -77,7 +77,7 @@ pub unsafe fn encode(source: &DynamicImage, quality: u8) -> Vec<u8> {
         mozjpeg_sys::JBOOLEAN_USE_LAMBDA_WEIGHT_TBL,
         TRUE,
     );
-    mozjpeg_sys::jpeg_set_quality(&mut cinfo, quality as i32, TRUE);
+    mozjpeg_sys::jpeg_set_quality(&mut cinfo, i32::from(quality), TRUE);
 
     ///////////////////////////////////////////////////////////////////////////
     // GO!
@@ -133,8 +133,8 @@ pub struct OptContext {
 }
 
 impl OptContext {
-    pub fn from_image(source: DynamicImage) -> Self {
-        OptContext {
+    #[must_use] pub fn from_image(source: DynamicImage) -> Self {
+        Self {
             vmaf_source: VideoBuffer::from_image(&source).expect("to VideoBuffer"),
             class_report: classifier::report(&source),
             source,
@@ -182,11 +182,7 @@ impl OptContext {
                 threshold = 88.0;
             }
         }
-        if score >= threshold {
-            true
-        } else {
-            false
-        }
+        score >= threshold
     }
     fn find_starting_position(&self) -> Option<u8> {
         let reduce_starting_values = |qs: Vec<u8>| -> Option<u8> {

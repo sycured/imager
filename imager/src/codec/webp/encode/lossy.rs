@@ -8,7 +8,7 @@ use libwebp_sys::{
 use std::ffi::{c_void, CString};
 use std::os::raw::{c_char, c_int};
 
-pub fn init_config(q: f32) -> WebPConfig {
+#[must_use] pub fn init_config(q: f32) -> WebPConfig {
     let mut config: WebPConfig = unsafe { std::mem::zeroed() };
     unsafe {
         WebPConfigInitInternal(
@@ -17,7 +17,7 @@ pub fn init_config(q: f32) -> WebPConfig {
             75.0,
             WEBP_ENCODER_ABI_VERSION as c_int,
         );
-        WebPValidateConfig(&mut config);
+        WebPValidateConfig(&config);
     };
     config.quality = q;
     config.lossless = 0;
@@ -25,7 +25,7 @@ pub fn init_config(q: f32) -> WebPConfig {
     config
 }
 
-pub fn init_picture(source: &DynamicImage) -> (WebPPicture, *mut WebPMemoryWriter) {
+#[must_use] pub fn init_picture(source: &DynamicImage) -> (WebPPicture, *mut WebPMemoryWriter) {
     // SETUP
     let (mut picture, writer) = crate::codec::webp::encode::lossless::init_picture(source);
     // CONVERT
@@ -38,9 +38,9 @@ pub fn init_picture(source: &DynamicImage) -> (WebPPicture, *mut WebPMemoryWrite
     (picture, writer)
 }
 
-pub fn encode(source: &DynamicImage, q: f32) -> Vec<u8> {
+#[must_use] pub fn encode(source: &DynamicImage, q: f32) -> Vec<u8> {
     let config = init_config(q);
-    let (mut picture, writer_ptr) = init_picture(&source);
+    let (mut picture, writer_ptr) = init_picture(source);
     unsafe {
         assert_ne!(WebPEncode(&config, &mut picture), 0);
     };

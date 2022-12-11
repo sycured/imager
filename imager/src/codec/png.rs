@@ -1,5 +1,4 @@
-use exoquant::optimizer::Optimizer;
-use exoquant::*;
+use exoquant::{Color, Histogram, Quantizer, Remapper, SimpleColorSpace, ditherer, optimizer::{WeightedKMeans, Optimizer}};
 use image::{DynamicImage, GenericImage, GenericImageView};
 use lodepng::Bitmap;
 use lodepng::RGBA;
@@ -17,7 +16,7 @@ use crate::vmaf;
 // DATA TYPES
 ///////////////////////////////////////////////////////////////////////////////
 
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Copy, Clone, Eq, PartialEq)]
 pub enum ImageMode {
     Text,
 }
@@ -38,7 +37,7 @@ fn encode_indexed(palette: &[Color], image: &[u8], width: u32, height: u32) -> V
                 color.a,
             );
             lodepng::ffi::lodepng_palette_add(
-                &mut state.info_raw_mut(),
+                state.info_raw_mut(),
                 color.r,
                 color.g,
                 color.b,
@@ -67,7 +66,7 @@ pub fn compress(
         ImageMode::Text => {
             // VALUES
             let d = ditherer::None;
-            let o = optimizer::WeightedKMeans;
+            let o = WeightedKMeans;
             // DONE
             let d: Box<dyn ditherer::Ditherer> = Box::new(d);
             let o: Box<dyn Optimizer> = Box::new(o);
@@ -100,11 +99,11 @@ pub fn compress(
     Ok(out_file)
 }
 
-pub fn basic_optimize(source: &DynamicImage) -> Vec<u8> {
-    let vmaf_source = VideoBuffer::from_image(&source).expect("to VideoBuffer");
+#[must_use] pub fn basic_optimize(source: &DynamicImage) -> Vec<u8> {
+    let vmaf_source = VideoBuffer::from_image(source).expect("to VideoBuffer");
     let run = |num_colors: usize| {
         let mode = ImageMode::Text;
-        let compressed = compress(&source, mode, num_colors).expect("compress png source");
+        let compressed = compress(source, mode, num_colors).expect("compress png source");
         let report = {
             let vmaf_derivative = VideoBuffer::from_png(&compressed).expect("to VideoBuffer");
             vmaf::get_report(&vmaf_source, &vmaf_derivative)
@@ -115,7 +114,7 @@ pub fn basic_optimize(source: &DynamicImage) -> Vec<u8> {
     let fallback = || {
         let num_colors = 255;
         let mode = ImageMode::Text;
-        compress(&source, mode, num_colors).expect("compress png source")
+        compress(source, mode, num_colors).expect("compress png source")
     };
     // RUN
     for num_colors in 1..256 {

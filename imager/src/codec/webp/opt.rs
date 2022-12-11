@@ -18,7 +18,7 @@ pub struct OutMeta {
     pub output_path: Option<PathBuf>,
 }
 
-pub fn opt(source: &DynamicImage) -> (Vec<u8>, OutMeta) {
+#[must_use] pub fn opt(source: &DynamicImage) -> (Vec<u8>, OutMeta) {
     let class = classifier::report(source);
     let vmaf_source = VideoBuffer::from_image(source).expect("image to yuv frame");
     let run = |q: f32| -> (Vec<u8>, f64) {
@@ -78,7 +78,7 @@ pub fn opt(source: &DynamicImage) -> (Vec<u8>, OutMeta) {
         let reduce_starting_values = |qs: Vec<u8>| -> Option<u8> {
             let mut last_q = 0;
             for q in qs {
-                let vmaf_score = run(q as f32).1;
+                let vmaf_score = run(f32::from(q)).1;
                 let passed = terminate(vmaf_score);
                 if passed && q <= 10 {
                     return Some(0);
@@ -98,7 +98,7 @@ pub fn opt(source: &DynamicImage) -> (Vec<u8>, OutMeta) {
             _ => bad_fallback(),
         }
     };
-    let start_q = start_q.unwrap_or(1) as u32;
+    let start_q = u32::from(start_q.unwrap_or(1));
     let mut last_q = None;
     let mut last_score = None;
     for q in start_q..100 {

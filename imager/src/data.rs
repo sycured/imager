@@ -20,7 +20,7 @@ use std::sync::Arc;
 // OUTPUT-FORMAT
 ///////////////////////////////////////////////////////////////////////////////
 
-#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
 pub enum OutputFormat {
     Jpeg,
     Png,
@@ -32,15 +32,15 @@ impl OutputFormat {
         let buffer = std::fs::read(path).ok()?;
         let format = ::image::guess_format(&buffer).ok()?;
         match format {
-            ImageFormat::Jpeg => Some(OutputFormat::Jpeg),
-            ImageFormat::Png => Some(OutputFormat::Png),
-            ImageFormat::WebP => Some(OutputFormat::Webp),
+            ImageFormat::Jpeg => Some(Self::Jpeg),
+            ImageFormat::Png => Some(Self::Png),
+            ImageFormat::WebP => Some(Self::Webp),
             _ => None,
         }
     }
     pub fn infer_from_path<P: AsRef<Path>>(path: P) -> Option<Self> {
         let ext = path.as_ref().extension()?.to_str()?;
-        OutputFormat::from_str(ext).ok()
+        Self::from_str(ext).ok()
     }
 }
 
@@ -48,10 +48,10 @@ impl FromStr for OutputFormat {
     type Err = String;
     fn from_str(s: &str) -> Result<Self, Self::Err> {
         match s.to_lowercase().as_str() {
-            "jpeg" => Ok(OutputFormat::Jpeg),
-            "jpg" => Ok(OutputFormat::Jpeg),
-            "png" => Ok(OutputFormat::Png),
-            "webp" => Ok(OutputFormat::Webp),
+            "jpeg" => Ok(Self::Jpeg),
+            "jpg" => Ok(Self::Jpeg),
+            "png" => Ok(Self::Png),
+            "webp" => Ok(Self::Webp),
             _ => Err(format!("Unknown or unsupported output format {}", s)),
         }
     }
@@ -59,7 +59,7 @@ impl FromStr for OutputFormat {
 
 impl Default for OutputFormat {
     fn default() -> Self {
-        OutputFormat::Jpeg
+        Self::Jpeg
     }
 }
 
@@ -87,7 +87,7 @@ impl FromStr for OutputFormats {
             })
             .collect::<Vec<_>>();
         if invalids.is_empty() {
-            Ok(OutputFormats(results))
+            Ok(Self(results))
         } else {
             Err(invalids.join(", "))
         }
@@ -98,15 +98,15 @@ impl FromStr for OutputFormats {
 // RESOLUTION
 ///////////////////////////////////////////////////////////////////////////////
 
-#[derive(Debug, PartialEq, Clone, Serialize, Deserialize)]
+#[derive(Debug, PartialEq, Clone, Serialize, Deserialize, Eq)]
 pub struct Resolution {
     pub width: u32,
     pub height: u32,
 }
 
 impl Resolution {
-    pub fn new(width: u32, height: u32) -> Self {
-        Resolution { width, height }
+    #[must_use] pub fn new(width: u32, height: u32) -> Self {
+        Self { width, height }
     }
 }
 
@@ -124,7 +124,7 @@ impl FromStr for Resolution {
         let height = height.trim_start_matches("x");
         let width = u32::from_str(width).map_err(|_| "invalid")?;
         let height = u32::from_str(height).map_err(|_| "invalid")?;
-        Ok(Resolution { width, height })
+        Ok(Self { width, height })
     }
 }
 
@@ -143,8 +143,8 @@ pub enum OutputSize {
 impl std::fmt::Display for OutputSize {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
-            OutputSize::Px(px) => write!(f, "{}", px),
-            OutputSize::Full => write!(f, "full"),
+            Self::Px(px) => write!(f, "{}", px),
+            Self::Full => write!(f, "full"),
         }
     }
 }
@@ -152,19 +152,16 @@ impl std::fmt::Display for OutputSize {
 impl FromStr for OutputSize {
     type Err = String;
     fn from_str(s: &str) -> Result<Self, Self::Err> {
-        match s {
-            "full" => Ok(OutputSize::Full),
-            _ => {
-                let val: Resolution = Resolution::from_str(s)?;
-                Ok(OutputSize::Px(val))
-            }
+        if s == "full" { Ok(Self::Full) } else {
+            let val: Resolution = Resolution::from_str(s)?;
+            Ok(Self::Px(val))
         }
     }
 }
 
 impl Default for OutputSize {
     fn default() -> Self {
-        OutputSize::Full
+        Self::Full
     }
 }
 
@@ -192,7 +189,7 @@ impl<'de> Deserialize<'de> for OutputSize {
 // MISC HELPERS
 ///////////////////////////////////////////////////////////////////////////////
 
-pub fn ensure_even_reslution(source: &DynamicImage) -> DynamicImage {
+#[must_use] pub fn ensure_even_reslution(source: &DynamicImage) -> DynamicImage {
     let (width, height) = source.dimensions();
     // ENSURE EVEN
     let even_width = (width % 2) == 0;
@@ -212,8 +209,7 @@ pub fn ensure_even_reslution(source: &DynamicImage) -> DynamicImage {
                 height
             }
         };
-        let new_image = source.clone().crop(0, 0, new_width, new_height);
-        new_image
+        source.clone().crop(0, 0, new_width, new_height)
     } else {
         source.clone()
     }
@@ -236,7 +232,7 @@ pub fn open_dir_sorted_paths<P: AsRef<Path>>(path: P) -> Vec<PathBuf> {
                 .to_str()
                 .expect("file name to str")
                 .chars()
-                .take_while(|x| x.is_ascii_digit())
+                .take_while(char::is_ascii_digit)
                 .collect::<String>();
             let index = file_name.parse::<usize>().ok()?;
             Some((index, x))
@@ -309,11 +305,7 @@ unsafe fn convert_to_yuv_using_webp(source: &DynamicImage) -> Yuv420P {
     };
     std::mem::drop(picture);
     // DONE
-    let result = Yuv420P {
-        data,
-        width,
-        height,
-    };
+    let result = Yuv420P { width, height, data };
     assert!(result.expected_yuv420p_size());
     result
 }
@@ -361,7 +353,7 @@ unsafe fn convert_to_rgba_using_webp(source: &Yuv420P) -> DynamicImage {
     let rgba_output = ::image::RgbaImage::from_fn(width, height, |x_pos, y_pos| {
         let ptr_ix = (y_pos * width) + x_pos;
         let px = *picture.argb.add(ptr_ix as usize);
-        let [a, r, g, b]: [u8; 4] = std::mem::transmute(px.to_be());
+        let [a, r, g, b]: [u8; 4] = px.to_be().to_ne_bytes();
         ::image::Rgba([r, g, b, a])
     });
     let rgba_output = DynamicImage::ImageRgba8(rgba_output);
@@ -395,7 +387,7 @@ impl Yuv420P {
     }
     pub fn open_yuv<P: AsRef<Path>>(path: P, width: u32, height: u32) -> Result<Self, ()> {
         let source = std::fs::read(path).expect("read raw yuv file");
-        let result = Yuv420P {
+        let result = Self {
             width,
             height,
             data: source,
@@ -487,18 +479,18 @@ impl VideoBuffer {
     pub fn from_png(source: &[u8]) -> Result<Self, ()> {
         let source = ::image::load_from_memory_with_format(source, ::image::ImageFormat::Png);
         let source = source.expect("load png source");
-        VideoBuffer::from_image(&source)
+        Self::from_image(&source)
     }
     pub fn from_jpeg(source: &[u8]) -> Result<Self, ()> {
         let source = ::image::load_from_memory_with_format(source, ::image::ImageFormat::Jpeg);
         let source = source.expect("load jpeg source");
-        VideoBuffer::from_image(&source)
+        Self::from_image(&source)
     }
     pub fn from_image(source: &DynamicImage) -> Result<Self, ()> {
-        Ok(VideoBuffer::singleton(Yuv420P::from_image(source)?))
+        Ok(Self::singleton(Yuv420P::from_image(source)?))
     }
-    pub fn singleton(frame: Yuv420P) -> Self {
-        VideoBuffer {
+    #[must_use] pub fn singleton(frame: Yuv420P) -> Self {
+        Self {
             width: frame.width,
             height: frame.height,
             frames: Arc::new(vec![frame]),
@@ -524,19 +516,19 @@ impl VideoBuffer {
             cursor: 0,
         })
     }
-    pub fn width(&self) -> u32 {
+    #[must_use] pub fn width(&self) -> u32 {
         self.width
     }
-    pub fn height(&self) -> u32 {
+    #[must_use] pub fn height(&self) -> u32 {
         self.height
     }
-    pub fn dimensions(&self) -> (u32, u32) {
+    #[must_use] pub fn dimensions(&self) -> (u32, u32) {
         (self.width, self.height)
     }
-    pub fn as_frames(&self) -> &[Yuv420P] {
+    #[must_use] pub fn as_frames(&self) -> &[Yuv420P] {
         self.frames.as_ref()
     }
-    pub fn into_frames(self) -> Vec<Yuv420P> {
+    #[must_use] pub fn into_frames(self) -> Vec<Yuv420P> {
         let refs = Arc::strong_count(&self.frames);
         if refs == 0 {
             Arc::try_unwrap(self.frames).expect("shuld have no other refs")
@@ -546,16 +538,16 @@ impl VideoBuffer {
     }
     pub fn next(&mut self) -> Option<&Yuv420P> {
         let frame = self.frames.get(self.cursor)?;
-        self.cursor = self.cursor + 1;
+        self.cursor += 1;
         Some(frame)
     }
     pub fn set_cursor(&mut self, cursor_pos: usize) {
         self.cursor = cursor_pos;
     }
-    pub fn position(&self) -> usize {
+    #[must_use] pub fn position(&self) -> usize {
         self.cursor
     }
-    pub fn as_fresh_cursor(&self) -> VideoBuffer {
+    #[must_use] pub fn as_fresh_cursor(&self) -> VideoBuffer {
         VideoBuffer {
             width: self.width,
             height: self.height,
