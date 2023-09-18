@@ -31,7 +31,7 @@ image = "0.24.5"
 imageproc = "0.23.0"
 png = "0.17.7"
 rgb2yuv420 = "0.2.3"
-libwebp-sys = "0.8.0"
+libwebp-sys = "0.9.3"
 indicatif = "0.17.2"
 
 [features]
